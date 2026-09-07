@@ -3,7 +3,8 @@
 A portfolio prototype for grounded answers about regulatory documents.
 Currently implemented: local PDF/text extraction, overlapping chunking,
 OpenAI-compatible embeddings, persistent Chroma semantic search, a standalone
-LLM chat adapter, a grounded RAG question-answering service, and a FastAPI API.
+LLM chat adapter, a grounded RAG question-answering service, a FastAPI API,
+and a minimal Streamlit frontend.
 Automated quality evaluation and Docker are future work.
 
 ## Setup
@@ -309,6 +310,51 @@ reads cannot observe an in-progress index write. Run one Uvicorn worker and avoi
 concurrent CLI writes to the same collection. The lock is not a multi-process
 coordination mechanism. The API is a local prototype with no authentication.
 
+## Streamlit frontend
+
+Install the optional frontend dependency (`.[dev]` also includes it):
+
+```powershell
+python -m pip install -e ".[ui]"
+```
+
+Start FastAPI as documented above. In a second terminal, activate the same virtual
+environment and start the frontend from the repository root:
+
+```powershell
+python -m streamlit run streamlit_app.py
+```
+
+Open `http://localhost:8501`. Enter a question and select **Submit**. The page shows
+the API answer and cited filenames, pages, and supporting quotes beneath it.
+Insufficient-evidence responses have a distinct warning. The collapsed
+**Retrieved chunks and scores** section shows all retrieved passages, similarity
+scores, chunk IDs, and whether each passage was included in the model context.
+
+`API_BASE_URL` defaults to `http://127.0.0.1:8000`. Set it in the frontend's shell
+when the API uses a different address, for example:
+
+```powershell
+$env:API_BASE_URL = "http://127.0.0.1:8000"
+$env:API_TIMEOUT_SECONDS = "120"
+```
+
+The frontend has a 5-second connection timeout and a configurable read/write/pool
+timeout (120 seconds by default). Connection failures, API errors, and malformed
+responses are displayed without a traceback. A failed or blank submission clears
+the previous answer so it is not mistaken for a new result. Successful results
+remain available across page reruns without repeating the API call.
+
+The Streamlit process needs only the API connection settings, not provider keys.
+It calls `POST /query` through `api_client.py` and shares only Pydantic response
+schemas with the backend. Retrieval, evidence checks, citation construction, and
+LLM calls remain in FastAPI's service layer. API-provided text is displayed as
+plain text. Styling uses Streamlit defaults with a centered layout.
+
+Index documents through `POST /documents`, Swagger UI, or the existing search CLI
+before asking questions. This minimal frontend does not add upload management,
+authentication, chat history, or streaming.
+
 ## Design
 
 - `models.py` contains Pydantic page/chunk models and validated chunk settings.
@@ -328,6 +374,8 @@ coordination mechanism. The API is a local prototype with no authentication.
   mappings. `RAGService.index_document` handles staged uploads and indexing;
   `RAGService.list_documents` delegates inventory to the Chroma store. API schemas
   live in `models.py` alongside the existing chunk and answer models.
+- `streamlit_app.py` presents the question form and API results. `api_client.py`
+  handles HTTP transport, response validation, and frontend error messages only.
 - `store.py` handles persistent Chroma storage with explicit embeddings and cosine
   distance. It disables Chroma's automatic embedding function. Search reports
   `1 - distance` as similarity, consistent with the configured
@@ -368,7 +416,9 @@ across processes, metadata, ranking, invalid inputs, the CLI, grounded answers,
 insufficient evidence, citation/quote validation, and an end-to-end RAG flow with
 mocked HTTP providers. FastAPI integration tests exercise uploads, persistent
 inventory, citations, request validation, error mapping, and OpenAPI using a real
-temporary Chroma store with fake providers. No credentials, network access, or
+temporary Chroma store with fake providers. Streamlit AppTest checks question
+submission, citations, insufficient-evidence rendering, and error recovery;
+HTTP-client tests mock the API transport. No credentials, network access, or
 embedding model downloads are needed.
 
 ## Limitations

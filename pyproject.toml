@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "ruff>=0.11,<1", "mypy>=1.15,<2"]
+dev = ["pytest>=8,<10", "ruff>=0.11,<1", "mypy>=1.15,<2", "streamlit>=1.49,<2"]
+ui = ["streamlit>=1.49,<2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -36,5 +37,5 @@ select = ["E", "F", "I"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "scripts"]
+files = ["src", "scripts", "streamlit_app.py"]
 strict = true

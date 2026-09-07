@@ -407,6 +407,26 @@ The dataset reference answers are human-written expected-answer guides, retained
 in the output for manual analysis. They are not scored with lexical overlap,
 because wording-only scoring is misleading for regulatory answers.
 
+## Structured request logging
+
+The FastAPI application emits one JSON log line for every RAG request. Successful
+requests use `rag_request_completed`; retrieval or LLM failures use
+`rag_request_failed`. Each record includes a request ID, retrieval/LLM/total
+latencies in milliseconds, retrieved-chunk count and scores, model name, refusal
+state, and stable error type/code where applicable. The API also returns the
+request ID in the `X-Request-ID` response header.
+
+Set `LOG_LEVEL` to control the `regulatory_rag` logger, for example:
+
+```powershell
+$env:LOG_LEVEL = "INFO"
+```
+
+Logs intentionally exclude questions, prompts, answers, document passages,
+provider endpoints, API keys, and exception messages. Token counts are local
+character-based estimates (roughly four characters per token); the current chat
+adapter does not expose provider-reported usage.
+
 ## Design
 
 - `models.py` contains Pydantic page/chunk models and validated chunk settings.

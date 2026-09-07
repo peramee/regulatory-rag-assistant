@@ -82,7 +82,9 @@ def pdf_bytes() -> bytes:
 
 
 def test_health_and_empty_inventory(client, service):
-    assert client.get("/health").json() == {"status": "ok"}
+    health = client.get("/health")
+    assert health.json() == {"status": "ok"}
+    assert len(health.headers["X-Request-ID"]) == 32
     result = client.get("/documents")
     assert result.status_code == 200
     assert result.json() == {"documents": []}
@@ -259,7 +261,7 @@ def test_embedding_error_leaves_index_empty(client, service, monkeypatch):
 
 
 def test_index_conflict_and_unexpected_error_responses(client, service, monkeypatch):
-    def conflict(question, *, top_k):
+    def conflict(question, *, top_k, request_id):
         raise IndexCompatibilityError("Embedding dimension changed; reindex documents")
 
     monkeypatch.setattr(service, "answer_question", conflict)

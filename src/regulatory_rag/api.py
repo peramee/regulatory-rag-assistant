@@ -4,10 +4,12 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import RequestResponseEndpoint
 
 from regulatory_rag.ingestion import DocumentIngestionError
 from regulatory_rag.models import (
@@ -19,6 +21,7 @@ from regulatory_rag.models import (
     RAGResponse,
     ValidationIssue,
 )
+from regulatory_rag.observability import configure_structured_logging
 from regulatory_rag.providers import (
     EmbeddingError,
     LLMError,
@@ -63,6 +66,7 @@ def create_app(service: RAGService | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         nonlocal service
+        configure_structured_logging(os.environ.get("LOG_LEVEL", "INFO"))
         if service is None:
             embeddings = OpenAICompatibleEmbeddings(
                 model=os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small"),
@@ -88,6 +92,13 @@ def create_app(service: RAGService | None = None) -> FastAPI:
         description="Index PDF/text documents and ask grounded questions with source citations.",
         lifespan=lifespan,
     )
+
+    @application.middleware("http")
+    async def request_id_header(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        request.state.request_id = uuid4().hex
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request.state.request_id
+        return response
 
     def active_service() -> RAGService:
         if service is None:
@@ -175,9 +186,11 @@ def create_app(service: RAGService | None = None) -> FastAPI:
             500: {"model": ErrorResponse},
         },
     )
-    def query(body: QueryRequest) -> RAGResponse:
+    def query(body: QueryRequest, request: Request) -> RAGResponse:
         """Return a grounded answer/citations or an insufficient-evidence result (both HTTP 200)."""
-        return active_service().answer_question(body.question, top_k=body.top_k)
+        return active_service().answer_question(
+            body.question, top_k=body.top_k, request_id=request.state.request_id
+        )
 
     return application
 

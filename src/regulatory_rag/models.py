@@ -30,8 +30,18 @@ class DocumentPage(BaseModel):
     text: str
 
 
-class Chunk(DocumentPage):
+class DocumentChunk(DocumentPage):
     """A source-located passage with a deterministic identifier."""
 
     chunk_id: str = Field(min_length=1)
     text: str = Field(min_length=1, pattern=r"\S")
+
+
+# Preserve the name used by the existing ingestion API.
+Chunk = DocumentChunk
+
+
+class SearchResult(DocumentChunk):
+    """Retrieved passage; cosine similarity is higher for closer matches."""
+
+    score: float = Field(ge=-1, le=1, allow_inf_nan=False)

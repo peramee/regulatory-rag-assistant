@@ -3,8 +3,8 @@
 A portfolio prototype for grounded answers about regulatory documents.
 Currently implemented: local PDF/text extraction, overlapping chunking,
 OpenAI-compatible embeddings, persistent Chroma semantic search, a standalone
-LLM chat adapter, and a grounded RAG question-answering service. FastAPI,
-automated quality evaluation, and Docker are future work.
+LLM chat adapter, a grounded RAG question-answering service, and a FastAPI API.
+Automated quality evaluation and Docker are future work.
 
 ## Setup
 
@@ -232,6 +232,83 @@ evaluation remains necessary; the tests verify orchestration and deterministic
 validation with fake or mocked models. No second model verifier or automatic
 repair/retry loop is included in this prototype.
 
+## HTTP API
+
+Install the updated dependencies with `python -m pip install -e ".[dev]"`, then
+set the embedding and LLM environment variables described above. Start the API:
+
+```powershell
+python -m uvicorn regulatory_rag.api:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Open [Swagger UI](http://127.0.0.1:8000/docs) or
+[ReDoc](http://127.0.0.1:8000/redoc). The OpenAPI schema is available at
+`/openapi.json`, including multipart upload, query, response, and error schemas.
+Providers and storage are constructed during application startup; invalid
+configuration fails startup before serving requests. There are no live provider
+requests during startup. `.env` files are not loaded automatically.
+
+| Endpoint | Request | Successful response |
+| --- | --- | --- |
+| `GET /health` | None | `200`, `{"status":"ok"}`; liveness only, no provider calls |
+| `POST /documents` | Multipart form with one `file` (.txt or .pdf) | `201` if new chunks are indexed, `200` if existing IDs are reindexed |
+| `GET /documents` | None | `200`, `{"documents":[{"document":"rules.pdf","chunk_count":4,"pages":[1,2]}]}` |
+| `POST /query` | JSON `{"question":"What reporting obligations apply?","top_k":3}` | `200`, grounded `RAGResponse`, including sources and retrieval diagnostics |
+
+`POST /documents` returns `document`, `chunks_indexed`, and `new_chunks` after
+synchronous indexing finishes. Original source basenames are preserved; uploaded
+paths are never used as filesystem destinations. Temporary upload files are
+removed on success or failure. Repeated identical uploads retain the same chunk
+IDs and do not duplicate entries. Different contents with the same filename are
+retained as separate chunk versions.
+
+Document inventory is derived from persisted Chroma metadata, so it includes CLI
+uploads and survives application restarts. It groups all versions by filename;
+two separate documents with the same basename share one inventory entry. `pages`
+contains the sorted PDF pages with indexed text, not the document's total page
+count; text-only entries have an empty page list.
+
+`top_k` is optional, must be an integer from 1 to 100, and overrides retrieval only
+for that request. Questions must contain non-whitespace text and have at most
+10,000 characters. Evidence refusal is a valid `200` response with
+`status="insufficient_evidence"`, not an HTTP failure.
+
+Example calls (use `curl.exe` instead of `curl` in Windows PowerShell):
+
+```bash
+curl http://127.0.0.1:8000/health
+curl -F "file=@data/regulation.pdf" http://127.0.0.1:8000/documents
+curl http://127.0.0.1:8000/documents
+curl -H "Content-Type: application/json" -d '{"question":"What reporting obligations apply?","top_k":3}' http://127.0.0.1:8000/query
+```
+
+API storage settings are `CHROMA_PATH` (default `data/chroma`) and
+`CHROMA_COLLECTION` (default `regulatory_documents`). `MAX_UPLOAD_BYTES` defaults
+to 10,485,760 (10 MiB). The service enforces this per-file limit before extraction
+and embedding; multipart parsing/spooling happens first, so this is not a total
+HTTP request-body limit. The API shares index settings with the search demo.
+
+Errors use `{"code":"...","detail":"..."}`, with field-level `issues` for
+invalid requests. Provider credentials and raw response bodies are not returned.
+
+| Status | Meaning |
+| --- | --- |
+| `409` | Index/embedding configuration conflict; rebuild using compatible settings |
+| `413` | File exceeds the configured upload limit |
+| `415` | Unsupported document extension |
+| `422` | Invalid JSON/fields, missing file, empty/unreadable document, or unsupported PDF extraction |
+| `502` | Embedding failure or unusable LLM response, including upstream credential errors |
+| `503` | LLM rate limit/quota exhaustion or provider unavailability |
+| `504` | LLM request timeout |
+| `500` | Unexpected internal/storage failure; internal details are omitted |
+
+Routes only validate HTTP inputs, call `RAGService`, and format HTTP results.
+Synchronous routes run through FastAPI's worker thread handling. A service-level
+lock serializes indexing, listing, and question answering within one process, so
+reads cannot observe an in-progress index write. Run one Uvicorn worker and avoid
+concurrent CLI writes to the same collection. The lock is not a multi-process
+coordination mechanism. The API is a local prototype with no authentication.
+
 ## Design
 
 - `models.py` contains Pydantic page/chunk models and validated chunk settings.
@@ -247,6 +324,10 @@ repair/retry loop is included in this prototype.
   and renders answers with citations. `service.py` coordinates retrieval and
   generation. `RAGConfig` provides context-selection limits; `RAGResponse` keeps
   the answer and retrieval trace together without depending on an API framework.
+- `api.py` defines FastAPI routes, application startup wiring, and HTTP error
+  mappings. `RAGService.index_document` handles staged uploads and indexing;
+  `RAGService.list_documents` delegates inventory to the Chroma store. API schemas
+  live in `models.py` alongside the existing chunk and answer models.
 - `store.py` handles persistent Chroma storage with explicit embeddings and cosine
   distance. It disables Chroma's automatic embedding function. Search reports
   `1 - distance` as similarity, consistent with the configured
@@ -285,8 +366,10 @@ Tests generate small real PDF fixtures, mock HTTP embedding responses, and use
 fixed fake vectors with real temporary Chroma databases. They cover persistence
 across processes, metadata, ranking, invalid inputs, the CLI, grounded answers,
 insufficient evidence, citation/quote validation, and an end-to-end RAG flow with
-mocked HTTP providers. No credentials, network access, or embedding model downloads
-are needed.
+mocked HTTP providers. FastAPI integration tests exercise uploads, persistent
+inventory, citations, request validation, error mapping, and OpenAPI using a real
+temporary Chroma store with fake providers. No credentials, network access, or
+embedding model downloads are needed.
 
 ## Limitations
 
@@ -294,11 +377,12 @@ No OCR: image-only PDFs cannot be ingested. Blank/image-only pages are skipped
 when other pages contain text, so mixed scanned/text PDFs may be incomplete.
 Complex tables, columns, and reading order depend on PDF extraction quality.
 Character windows may split sentences or words. Documents are processed in
-memory; there are no upload limits. Original files are not copied into the index.
+memory; the API applies a per-file upload limit, while direct ingestion does not.
+Original files are not copied into the index.
 The index persists extracted chunks, metadata, and vectors only.
 
-The prototype assumes one writer and no concurrent ingestion/search. Chroma batch
-writes are not a whole-document transaction: a storage failure can leave partial
+The prototype assumes one application process; service operations are serialized.
+Chroma batch writes are not a whole-document transaction: a storage failure can leave partial
 data; retrying the same chunks is idempotent. There is no automatic retry for
 provider failures, token-aware batching, or document-version deletion workflow.
 Real embedding quality and provider compatibility require a configured endpoint

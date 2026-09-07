@@ -94,6 +94,16 @@ def chunk_pages(pages: list[DocumentPage], config: ChunkingConfig | None = None)
     return chunks
 
 
-def ingest_document(path: str | Path, config: ChunkingConfig | None = None) -> list[Chunk]:
+def ingest_document(
+    path: str | Path, config: ChunkingConfig | None = None, *, source_document: str | None = None
+) -> list[Chunk]:
     """Extract and chunk one local document without persistence or network calls."""
-    return chunk_pages(extract_document(path), config)
+    pages = extract_document(path)
+    if source_document is not None:
+        pages = [
+            DocumentPage(
+                source_document=source_document, page_number=page.page_number, text=page.text
+            )
+            for page in pages
+        ]
+    return chunk_pages(pages, config)

@@ -7,8 +7,12 @@ import chromadb
 from chromadb.api.types import Metadata
 from chromadb.config import Settings
 
-from regulatory_rag.models import DocumentChunk, SearchResult
+from regulatory_rag.models import DocumentChunk, IndexedDocument, SearchResult
 from regulatory_rag.providers import validate_embeddings
+
+
+class IndexCompatibilityError(ValueError):
+    """The selected index and embedding configuration are incompatible."""
 
 
 class ChromaStore:
@@ -33,18 +37,42 @@ class ChromaStore:
         )
         metadata = self._collection.metadata or {}
         if metadata.get("embedding_id") != embedding_id or metadata.get("schema_version") != 1:
-            raise ValueError("Incompatible index; use a new collection and reindex documents")
+            raise IndexCompatibilityError(
+                "Incompatible index; use a new collection and reindex documents"
+            )
         hnsw = self._collection.configuration.get("hnsw")
         if not hnsw or hnsw.get("space") != "cosine":
-            raise ValueError("The index must use cosine distance")
+            raise IndexCompatibilityError("The index must use cosine distance")
 
     def count(self) -> int:
         return self._collection.count()
 
+    def list_documents(self) -> list[IndexedDocument]:
+        """Read metadata only, grouping all indexed versions by filename."""
+        counts: dict[str, int] = {}
+        pages: dict[str, set[int]] = {}
+        for offset in range(0, self.count(), 1000):
+            records = self._collection.get(limit=1000, offset=offset, include=["metadatas"])
+            for metadata in records["metadatas"] or []:
+                document = metadata["source_document"]
+                if not isinstance(document, str):
+                    raise ValueError("Index contains invalid document metadata")
+                counts[document] = counts.get(document, 0) + 1
+                document_pages = pages.setdefault(document, set())
+                page = metadata.get("page_number")
+                if isinstance(page, int):
+                    document_pages.add(page)
+        return [
+            IndexedDocument(document=name, chunk_count=counts[name], pages=sorted(pages[name]))
+            for name in sorted(counts)
+        ]
+
     def _validate_dimension(self, dimension: int) -> None:
         stored = (self._collection.metadata or {}).get("dimension")
         if stored is not None and stored != dimension:
-            raise ValueError("Embedding dimension changed; use a new collection and reindex")
+            raise IndexCompatibilityError(
+                "Embedding dimension changed; use a new collection and reindex"
+            )
 
     def upsert_chunks(self, chunks: list[DocumentChunk], vectors: list[list[float]]) -> int:
         if not chunks and not vectors:

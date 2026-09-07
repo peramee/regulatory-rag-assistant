@@ -80,3 +80,43 @@ class RAGResponse(BaseModel):
     refusal_reason: Literal["no_context", "model_insufficient", "invalid_model_output"] | None = (
         None
     )
+
+
+class QueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=10000, pattern=r"\S")
+    top_k: int | None = Field(default=None, ge=1, le=100, strict=True)
+
+
+class IndexedDocument(BaseModel):
+    """Index inventory grouped by original source filename, including all versions."""
+
+    document: str
+    chunk_count: int = Field(ge=1)
+    pages: list[int]
+
+
+class DocumentListResponse(BaseModel):
+    documents: list[IndexedDocument]
+
+
+class IndexingResponse(BaseModel):
+    document: str
+    chunks_indexed: int = Field(ge=1)
+    new_chunks: int = Field(ge=0)
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+
+
+class ValidationIssue(BaseModel):
+    location: list[str | int]
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    code: str
+    detail: str
+    issues: list[ValidationIssue] | None = None

@@ -3,6 +3,7 @@
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
@@ -29,7 +30,7 @@ from regulatory_rag.providers import (
     OpenAICompatibleLLM,
 )
 from regulatory_rag.retrieval import Retriever
-from regulatory_rag.service import DocumentUploadError, RAGService
+from regulatory_rag.service import DocumentUploadError, RAGService, logger
 from regulatory_rag.store import ChromaStore, IndexCompatibilityError
 
 
@@ -84,6 +85,28 @@ def create_app(service: RAGService | None = None) -> FastAPI:
                 llm,
                 max_upload_bytes=int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024))),
             )
+            sources_dir = Path(os.environ.get("SOURCES_DIR", "sources"))
+            auto_index = os.environ.get("AUTO_INDEX_SOURCES", "true").lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            if auto_index and sources_dir.is_dir():
+                try:
+                    indexed = service.index_directory(sources_dir)
+                    logger.info(
+                        "indexed_source_directory",
+                        extra={"event": "indexed_source_directory", "chunks_indexed": indexed},
+                    )
+                except (OSError, ValueError) as error:
+                    logger.error(
+                        "source_indexing_failed",
+                        extra={
+                            "event": "source_indexing_failed",
+                            "error_type": type(error).__name__,
+                            "error_code": "startup_index_error",
+                        },
+                    )
         yield
 
     application = FastAPI(

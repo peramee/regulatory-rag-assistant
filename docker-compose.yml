@@ -1,0 +1,18 @@
+services:
+  regulatory-rag:
+    build: .
+    env_file:
+      - .env
+    environment:
+      CHROMA_PATH: /app/data/chroma
+      SOURCES_DIR: /app/sources
+      AUTO_INDEX_SOURCES: "true"
+      API_BASE_URL: http://127.0.0.1:8000
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    volumes:
+      - chroma-data:/app/data/chroma
+
+volumes:
+  chroma-data:

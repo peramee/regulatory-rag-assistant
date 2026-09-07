@@ -4,7 +4,7 @@ A portfolio prototype for grounded answers about regulatory documents.
 Currently implemented: local PDF/text extraction, overlapping chunking,
 OpenAI-compatible embeddings, persistent Chroma semantic search, a standalone
 LLM chat adapter, a grounded RAG question-answering service, a FastAPI API,
-a minimal Streamlit frontend, and a local evaluation runner. Docker is future work.
+a minimal Streamlit frontend, and a local evaluation runner.
 
 ## Setup
 
@@ -15,6 +15,28 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 ```
+
+For a one-command local launch, copy `.env.example` to `.env`, fill in the
+provider settings, load the variables into your shell, and run:
+
+```powershell
+python scripts/start.py
+```
+
+This starts the API on port 8000 and Streamlit on port 8501. API startup
+automatically indexes all PDF and text files below `sources/` (excluding the
+`originals` archive) into the configured Chroma collection. Set
+`AUTO_INDEX_SOURCES=false` to disable this behavior.
+
+Docker provides the same two-process prototype:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+Open http://localhost:8501 after the containers start. Chroma data persists in
+the `chroma-data` volume; source files are read from the local `sources/` folder.
 
 On Linux/macOS, activate with `source .venv/bin/activate` instead.
 

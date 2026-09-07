@@ -121,6 +121,22 @@ class RAGService:
         with self._lock:
             return DocumentListResponse(documents=self.retriever.store.list_documents())
 
+    def index_directory(self, directory: str | Path) -> int:
+        """Index supported files below a directory, skipping downloaded originals."""
+        root = Path(directory)
+        if not root.is_dir():
+            return 0
+        total = 0
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix.lower() not in {".txt", ".pdf"}:
+                continue
+            if "originals" in path.parts:
+                continue
+            with path.open("rb") as content:
+                result = self.index_document(path.name, content)
+            total += result.new_chunks
+        return total
+
     def _select_context(self, retrieved: list[SearchResult]) -> list[SearchResult]:
         remaining = self.config.max_context_chars
         selected: list[SearchResult] = []

@@ -14,3 +14,6 @@ dist/
 
 # Downloaded regulatory reference corpus (PDFs and local source manifest).
 /sources/transaction_reporting/
+
+# Generated evaluation reports; the manually curated dataset is committed.
+/evaluation/results/

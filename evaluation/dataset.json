@@ -1,0 +1,134 @@
+[
+  {
+    "id": "q001",
+    "question": "At whose perspective should an investment firm reflect a transaction report in a reporting chain?",
+    "expected_source": "fca_2017-12_market_watch_55.pdf",
+    "expected_page": 1,
+    "reference_answer": "The report should reflect the transaction from the investment firm's own perspective."
+  },
+  {
+    "id": "q002",
+    "question": "Who should normally be reported as the counterparty or client in a transaction reporting chain?",
+    "expected_source": "fca_2017-12_market_watch_55.pdf",
+    "expected_page": 1,
+    "reference_answer": "The firm should report its immediate counterparty or client, subject to the transmission conditions."
+  },
+  {
+    "id": "q003",
+    "question": "Which delegated regulation is mentioned in relation to transmission conditions in Market Watch 55?",
+    "expected_source": "fca_2017-12_market_watch_55.pdf",
+    "expected_page": 1,
+    "reference_answer": "Article 4 of Commission Delegated Regulation (EU) 2017/590 is mentioned."
+  },
+  {
+    "id": "q004",
+    "question": "Which types of organisations does FCA PS26/15 say its transaction reporting changes affect?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 4,
+    "reference_answer": "The policy statement affects investment firms, trading-venue operators, approved reporting mechanisms and other participants submitting transaction reports, reference data or order book data."
+  },
+  {
+    "id": "q005",
+    "question": "What supervisory purposes does the FCA identify for UK MiFIR transaction reports?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 4,
+    "reference_answer": "The FCA uses the reports to monitor markets, conduct market-abuse surveillance and support supervisory activities."
+  },
+  {
+    "id": "q006",
+    "question": "How many transaction reporting fields will FCA PS26/15 reduce the UK regime from and to?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 5,
+    "reference_answer": "The policy statement says the number of fields will be reduced from 65 to 52."
+  },
+  {
+    "id": "q007",
+    "question": "What kind of financial instruments does FCA PS26/15 say will be removed from the UK transaction reporting obligation?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 5,
+    "reference_answer": "It says instruments that are only tradeable on EU trading venues will be removed from the reporting obligation."
+  },
+  {
+    "id": "q008",
+    "question": "What does FCA PS26/15 say about foreign exchange derivatives and transaction reporting scope?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 5,
+    "reference_answer": "It says FX derivatives will be removed from the scope of reporting requirements."
+  },
+  {
+    "id": "q009",
+    "question": "How does FCA PS26/15 change the default back-reporting period?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 5,
+    "reference_answer": "It reduces the default back-reporting period from five years to three years."
+  },
+  {
+    "id": "q010",
+    "question": "What does FCA PS26/15 say about reporting most corporate actions?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 5,
+    "reference_answer": "It says most corporate actions will be exempt from reporting obligations."
+  },
+  {
+    "id": "q011",
+    "question": "What new reporting framework does FCA PS26/15 say it is creating?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 5,
+    "reference_answer": "It creates a new framework for Conditional Single-Sided Reporting, or CSSR."
+  },
+  {
+    "id": "q012",
+    "question": "When does FCA PS26/15 say it will publish a draft schema, validation rules and new guidelines?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 6,
+    "reference_answer": "It says these materials will be published in October 2026."
+  },
+  {
+    "id": "q013",
+    "question": "When does FCA PS26/15 say the new UK transaction reporting regime will come into force?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 6,
+    "reference_answer": "The new regime will come into force on 3 April 2028."
+  },
+  {
+    "id": "q014",
+    "question": "What does FCA PS26/15 tell affected firms to review when preparing for the changes?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 7,
+    "reference_answer": "Affected firms should review their reporting logic, consider changes to scope and fields, and prepare for revised supporting materials."
+  },
+  {
+    "id": "q015",
+    "question": "What three principles for a long-term reporting framework are described in FCA PS26/15?",
+    "expected_source": "fca_2026-08_ps26-15_transaction_reporting_reform.pdf",
+    "expected_page": 8,
+    "reference_answer": "Data should only be collected where needed, a firm should report data only once, and data should be shared where appropriate."
+  },
+  {
+    "id": "q016",
+    "question": "What is the title and date of ESMA's technical transaction reporting instructions in the evaluation corpus?",
+    "expected_source": "esma65-8-2356_mifir_technical_reporting_instructions.pdf",
+    "expected_page": 1,
+    "reference_answer": "The document is titled Technical Reporting Instructions: MiFIR Transaction Reporting and is dated 29 May 2018."
+  },
+  {
+    "id": "q017",
+    "question": "What is the capital of France?",
+    "expected_refusal": true
+  },
+  {
+    "id": "q018",
+    "question": "What is the exact SEC Rule 613 reporting deadline for US equities?",
+    "expected_refusal": true
+  },
+  {
+    "id": "q019",
+    "question": "What monetary penalty must every firm pay for filing a late transaction report?",
+    "expected_refusal": true
+  },
+  {
+    "id": "q020",
+    "question": "What will UK transaction reporting rules require in the year 2035?",
+    "expected_refusal": true
+  }
+]

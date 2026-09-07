@@ -3,6 +3,7 @@
 from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
 from threading import RLock
+from time import perf_counter
 from typing import BinaryIO
 
 from regulatory_rag.config import RAGConfig
@@ -31,6 +32,17 @@ class DocumentUploadError(ValueError):
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+class AnswerExecution:
+    """An answer and elapsed timings for evaluation or operational instrumentation."""
+
+    def __init__(
+        self, response: RAGResponse, retrieval_seconds: float, total_seconds: float
+    ) -> None:
+        self.response = response
+        self.retrieval_seconds = retrieval_seconds
+        self.total_seconds = total_seconds
 
 
 class RAGService:
@@ -103,15 +115,27 @@ class RAGService:
         return selected
 
     def answer_question(self, question: str, *, top_k: int | None = None) -> RAGResponse:
+        return self.answer_question_timed(question, top_k=top_k).response
+
+    def answer_question_timed(self, question: str, *, top_k: int | None = None) -> AnswerExecution:
+        """Answer once while separating retrieval time from total service time."""
         if not question.strip():
             raise ValueError("Question must not be blank")
         if top_k is not None and (type(top_k) is not int or top_k <= 0):
             raise ValueError("top_k must be a positive integer")
+        started = perf_counter()
         with self._lock:
-            return self._answer_question(question, top_k=top_k or self.config.top_k)
+            retrieval_started = perf_counter()
+            retrieved = self.retriever.search(question, top_k=top_k or self.config.top_k)
+            retrieval_seconds = perf_counter() - retrieval_started
+            response = self._answer_from_retrieved(question, retrieved)
+        return AnswerExecution(
+            response=response,
+            retrieval_seconds=retrieval_seconds,
+            total_seconds=perf_counter() - started,
+        )
 
-    def _answer_question(self, question: str, *, top_k: int) -> RAGResponse:
-        retrieved = self.retriever.search(question, top_k=top_k)
+    def _answer_from_retrieved(self, question: str, retrieved: list[SearchResult]) -> RAGResponse:
         context = self._select_context(retrieved)
         response = RAGResponse(
             status="insufficient_evidence",

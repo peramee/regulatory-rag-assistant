@@ -4,8 +4,7 @@ A portfolio prototype for grounded answers about regulatory documents.
 Currently implemented: local PDF/text extraction, overlapping chunking,
 OpenAI-compatible embeddings, persistent Chroma semantic search, a standalone
 LLM chat adapter, a grounded RAG question-answering service, a FastAPI API,
-and a minimal Streamlit frontend.
-Automated quality evaluation and Docker are future work.
+a minimal Streamlit frontend, and a local evaluation runner. Docker is future work.
 
 ## Setup
 
@@ -362,6 +361,52 @@ Index documents through `POST /documents`, Swagger UI, or the existing search CL
 before asking questions. This minimal frontend does not add upload management,
 authentication, chat history, or streaming.
 
+## Evaluation
+
+The tracked [evaluation dataset](/H:/Programming/regulatory-rag-assistant/evaluation/dataset.json)
+contains 20 manually authored questions: 16 answerable questions tied to a
+specific source PDF and page, plus 4 deliberately unanswerable questions. The
+questions use the optional local transaction-reporting corpus described above.
+
+Run an isolated evaluation collection after configuring both embedding and LLM
+providers:
+
+```powershell
+python scripts/evaluate.py --index-corpus --collection transaction_reporting_evaluation
+```
+
+`--index-corpus` indexes each prepared PDF in `sources/transaction_reporting/`,
+excluding encrypted originals. Omit it to evaluate an existing collection, or
+repeat `--index FILE` to select individual documents. Use a separate collection
+for EU, historical UK, or UK reform material when those jurisdictions or dates
+must not be mixed.
+
+The runner writes `evaluation/results/results.json` and `results.csv`; that
+generated directory is ignored by Git. It also prints aggregate results to the
+console. JSON preserves every full per-question result, including retrieved
+chunks, sources, answers, errors, timings, and failures. CSV provides one flat
+analysis row per question. A provider/retrieval failure is recorded as
+`outcome="failed"` and does not stop later cases.
+
+For answerable cases, retrieval hit@k requires a top-k chunk matching the
+expected filename **and** PDF page. `document_hit_at_k` is included separately
+to distinguish finding the right document on the wrong page. Mean reciprocal
+rank uses the rank of the first filename/page match. Refusal cases are excluded
+from retrieval metrics and contribute to refusal accuracy instead.
+
+Groundedness is deterministic: an answered response must have citations whose
+document, page, chunk ID, and supporting quotes agree with the returned retrieved
+chunks, and each citation marker must appear in the answer. This validates
+traceability, not whether each quote semantically entails each claim. Add a
+reviewed judge or human assessment before treating groundedness as factual-quality
+assurance. Retrieval latency measures the service's vector search; total latency
+measures the entire answer operation, including locking, prompt construction, and
+LLM generation. Failed operations have total latency but may lack retrieval latency.
+
+The dataset reference answers are human-written expected-answer guides, retained
+in the output for manual analysis. They are not scored with lexical overlap,
+because wording-only scoring is misleading for regulatory answers.
+
 ## Design
 
 - `models.py` contains Pydantic page/chunk models and validated chunk settings.
@@ -383,6 +428,11 @@ authentication, chat history, or streaming.
   live in `models.py` alongside the existing chunk and answer models.
 - `streamlit_app.py` presents the question form and API results. `api_client.py`
   handles HTTP transport, response validation, and frontend error messages only.
+- `evaluation.py` evaluates the existing `RAGService` without duplicating
+  retrieval or generation logic. It writes JSON/CSV results and aggregates
+  source/page hit@k, document hit@k, MRR, citation/quote groundedness, refusal
+  accuracy, and retrieval/total latency. `scripts/evaluate.py` wires configured
+  providers and an optional evaluation corpus to that evaluator.
 - `store.py` handles persistent Chroma storage with explicit embeddings and cosine
   distance. It disables Chroma's automatic embedding function. Search reports
   `1 - distance` as similarity, consistent with the configured
@@ -427,6 +477,8 @@ temporary Chroma store with fake providers. Streamlit AppTest checks question
 submission, citations, insufficient-evidence rendering, and error recovery;
 HTTP-client tests mock the API transport. No credentials, network access, or
 embedding model downloads are needed.
+Evaluation tests cover dataset validation, source/page ranking, groundedness,
+refusal accuracy, failure preservation, aggregate metrics, and JSON/CSV reports.
 
 ## Limitations
 

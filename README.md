@@ -21,6 +21,13 @@ On Linux/macOS, activate with `source .venv/bin/activate` instead.
 
 ## Ingest a document
 
+A local starter corpus of official ESMA/FCA transaction reporting PDFs is stored
+in `sources/transaction_reporting/` when downloaded. The entire folder is ignored
+by Git and is not included in a clone. Its local `README.md` and `manifest.json`
+identify source URLs, versions, jurisdictions, and ingestion-ready files. It is
+not automatically indexed; choose documents before uploading through the API or
+using the search CLI. Historical guidance and UK reform material are separated.
+
 ```python
 from regulatory_rag.ingestion import ingest_document
 from regulatory_rag.models import ChunkingConfig

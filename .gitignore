@@ -11,3 +11,6 @@ __pycache__/
 data/
 build/
 dist/
+
+# Downloaded regulatory reference corpus (PDFs and local source manifest).
+/sources/transaction_reporting/

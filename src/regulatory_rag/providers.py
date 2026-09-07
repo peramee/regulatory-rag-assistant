@@ -1,11 +1,115 @@
-"""Replaceable embedding interface and an OpenAI-compatible HTTP adapter."""
+"""Replaceable embedding/LLM interfaces and OpenAI-compatible HTTP adapters."""
 
 import hashlib
 import math
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
+
+from regulatory_rag.config import LLMConfig
+
+
+class LLMProvider(Protocol):
+    def generate(self, system_prompt: str, user_prompt: str) -> str:
+        """Return completed text or raise LLMError; no retrieval or prompt policy."""
+        ...
+
+
+class LLMError(RuntimeError):
+    """Provider-independent failure without request bodies or credentials."""
+
+    def __init__(self, message: str, *, code: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
+class _ChatMessage(BaseModel):
+    role: Literal["assistant"]
+    content: str | None = None
+    refusal: str | None = None
+
+
+class _ChatChoice(BaseModel):
+    index: int = Field(ge=0, strict=True)
+    message: _ChatMessage
+    finish_reason: str
+
+
+class _ChatResponse(BaseModel):
+    choices: list[_ChatChoice] = Field(min_length=1, max_length=1)
+
+
+class OpenAICompatibleLLM:
+    """Synchronous, non-streaming chat completions with no automatic retries."""
+
+    def __init__(
+        self,
+        config: LLMConfig | None = None,
+        *,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        self.config = config if config is not None else LLMConfig.from_env()
+        self._transport = transport
+
+    def generate(self, system_prompt: str, user_prompt: str) -> str:
+        if not user_prompt.strip():
+            raise ValueError("user_prompt must not be blank")
+        messages = []
+        if system_prompt.strip():
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+        headers = {}
+        if self.config.api_key is not None:
+            headers["Authorization"] = f"Bearer {self.config.api_key.get_secret_value()}"
+        timeout = httpx.Timeout(
+            self.config.timeout_seconds, connect=self.config.connect_timeout_seconds
+        )
+        try:
+            with httpx.Client(
+                timeout=timeout, transport=self._transport, follow_redirects=False
+            ) as client:
+                response = client.post(
+                    f"{self.config.base_url}/chat/completions",
+                    headers=headers,
+                    json={"model": self.config.model, "messages": messages, "stream": False},
+                )
+                response.raise_for_status()
+        except httpx.TimeoutException:
+            raise LLMError("LLM request timed out", code="timeout") from None
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status in {401, 403}:
+                code, message = "authentication", "LLM authentication or permission denied"
+            elif status == 429:
+                code, message = "rate_limit", "LLM rate limit or quota exceeded"
+            elif status >= 500:
+                code, message = "unavailable", "LLM service is unavailable"
+            else:
+                code, message = "http_error", "LLM request was rejected"
+            raise LLMError(f"{message} (HTTP {status})", code=code, status_code=status) from None
+        except httpx.RequestError:
+            raise LLMError("Could not reach the LLM service", code="connection") from None
+        try:
+            completion = _ChatResponse.model_validate_json(response.content)
+        except ValidationError:
+            raise LLMError(
+                "LLM returned an invalid chat response", code="invalid_response"
+            ) from None
+        choice = completion.choices[0]
+        if choice.index != 0:
+            raise LLMError("LLM returned an unexpected choice index", code="invalid_response")
+        if choice.message.refusal or choice.finish_reason == "content_filter":
+            raise LLMError("LLM declined to produce a response", code="refusal")
+        if choice.finish_reason == "length":
+            raise LLMError("LLM response was truncated", code="truncated")
+        if choice.finish_reason != "stop":
+            raise LLMError("LLM did not return completed text", code="invalid_response")
+        content = choice.message.content
+        if content is None or not content.strip():
+            raise LLMError("LLM returned empty text", code="invalid_response")
+        return content
 
 
 class EmbeddingError(ValueError):

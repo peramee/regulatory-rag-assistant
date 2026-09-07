@@ -2,8 +2,9 @@
 
 A portfolio prototype for grounded answers about regulatory documents.
 Currently implemented: local PDF/text extraction, overlapping chunking,
-OpenAI-compatible embeddings, and persistent Chroma semantic search.
-Answer generation, FastAPI, evaluation, and Docker are future work.
+OpenAI-compatible embeddings, persistent Chroma semantic search, and a standalone
+LLM chat adapter. Grounded RAG answer generation, FastAPI, evaluation, and Docker
+are future work.
 
 ## Setup
 
@@ -97,6 +98,64 @@ and `embed(texts)`, returning one vector per input in order. Its identity must
 change whenever its embedding model/configuration changes. No base class,
 factory, or dependency injection framework is required.
 
+## LLM interface
+
+`LLMProvider.generate(system_prompt, user_prompt) -> str` is a provider-independent
+interface. `OpenAICompatibleLLM` implements the non-streaming
+[Chat Completions API](https://developers.openai.com/api/reference/python/resources/chat/subresources/completions/methods/create)
+using the existing HTTPX dependency. It is independent of retrieval and does not
+construct RAG prompts, check evidence, or generate citations.
+
+Set configuration in your shell (PowerShell example):
+
+```powershell
+$env:LLM_MODEL = "your-chat-model"
+$env:LLM_BASE_URL = "https://api.openai.com/v1"
+$env:LLM_API_KEY = "your-api-key"
+$env:LLM_TIMEOUT_SECONDS = "60"
+$env:LLM_CONNECT_TIMEOUT_SECONDS = "5"
+```
+
+`LLM_MODEL` is required: choose a model supported by your endpoint. The base URL
+defaults to `https://api.openai.com/v1`. `LLM_API_KEY` takes precedence over the
+`OPENAI_API_KEY` fallback; unauthenticated local endpoints may omit both keys.
+`.env.example` contains placeholders only. `.env` and `.env.*` files are ignored,
+except `.env.example`. Environment values are read when constructing the provider,
+not at import time; `.env` files are not automatically loaded.
+
+```python
+from regulatory_rag.providers import LLMError, LLMProvider, OpenAICompatibleLLM
+
+llm: LLMProvider = OpenAICompatibleLLM()
+try:
+    text = llm.generate("Respond concisely.", "Define a reporting deadline.")
+    print(text)
+except LLMError as error:
+    print(error.code, str(error))
+```
+
+This example is a plain model call, not a grounded regulatory answer. For explicit
+configuration, pass an `LLMConfig` from `regulatory_rag.config` to the constructor.
+API keys use Pydantic `SecretStr`, are excluded from configuration serialization
+and representation, and are sent only in the authorization header. The adapter
+does not log prompts, responses, or credentials.
+
+Defaults are a 5-second connection timeout and 60-second read/write/pool timeouts.
+These are HTTP operation/inactivity limits, not an overall wall-clock deadline.
+There are no automatic retries or redirects. HTTP, network, malformed-response,
+refusal, and truncation failures raise `LLMError` with a stable `code` and optional
+`status_code`; messages omit response bodies and underlying transport details.
+Codes are `authentication`, `rate_limit`, `unavailable`, `http_error`, `timeout`,
+`connection`, `invalid_response`, `refusal`, and `truncated`. Invalid configuration
+and blank user prompts raise `ValueError` (including Pydantic validation errors).
+
+The adapter accepts a completed assistant text response with `finish_reason=stop`.
+It rejects truncated or tool-call responses rather than returning partial output.
+Streaming, tools, conversation history, model-specific generation parameters, and
+models requiring a developer message instead of a system message are not supported
+in this initial adapter. Provider compatibility has been tested with mocked HTTP,
+not real API calls.
+
 ## Design
 
 - `models.py` contains Pydantic page/chunk models and validated chunk settings.
@@ -105,6 +164,9 @@ factory, or dependency injection framework is required.
 - `providers.py` isolates the HTTP embedding adapter and validates responses.
   Embeddings are reordered by response index and checked for count, dimension,
   finite values, and nonzero vectors. Requests have a 30-second timeout.
+- The same module exposes `LLMProvider`, `OpenAICompatibleLLM`, and `LLMError`.
+  `config.py` validates environment-backed LLM settings. These have no dependency
+  on the vector store or retrieval orchestration.
 - `store.py` handles persistent Chroma storage with explicit embeddings and cosine
   distance. It disables Chroma's automatic embedding function. Search reports
   `1 - distance` as similarity, consistent with the configured

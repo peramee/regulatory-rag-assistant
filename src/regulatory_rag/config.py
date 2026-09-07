@@ -1,4 +1,4 @@
-"""Validated LLM configuration, loaded explicitly from the environment."""
+"""Validated LLM and RAG configuration."""
 
 import os
 from typing import Self
@@ -6,6 +6,16 @@ from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+
+
+class RAGConfig(BaseModel):
+    """Retrieval/context limits; similarity thresholds require corpus calibration."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    top_k: int = Field(default=5, gt=0, strict=True)
+    max_context_chars: int = Field(default=12000, gt=0, strict=True)
+    min_score: float | None = Field(default=None, ge=-1, le=1, allow_inf_nan=False)
 
 
 class LLMConfig(BaseModel):

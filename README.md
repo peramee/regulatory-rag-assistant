@@ -2,9 +2,9 @@
 
 A portfolio prototype for grounded answers about regulatory documents.
 Currently implemented: local PDF/text extraction, overlapping chunking,
-OpenAI-compatible embeddings, persistent Chroma semantic search, and a standalone
-LLM chat adapter. Grounded RAG answer generation, FastAPI, evaluation, and Docker
-are future work.
+OpenAI-compatible embeddings, persistent Chroma semantic search, a standalone
+LLM chat adapter, and a grounded RAG question-answering service. FastAPI,
+automated quality evaluation, and Docker are future work.
 
 ## Setup
 
@@ -156,6 +156,82 @@ models requiring a developer message instead of a system message are not support
 in this initial adapter. Provider compatibility has been tested with mocked HTTP,
 not real API calls.
 
+## Grounded question answering
+
+`RAGService.answer_question(question)` retrieves passages, selects a bounded
+context, asks the LLM for grounded claims, and returns a Pydantic `RAGResponse`.
+Use the embedding and LLM environment settings documented above:
+
+```python
+import os
+
+from regulatory_rag.config import RAGConfig
+from regulatory_rag.providers import OpenAICompatibleEmbeddings, OpenAICompatibleLLM
+from regulatory_rag.retrieval import Retriever
+from regulatory_rag.service import RAGService
+from regulatory_rag.store import ChromaStore
+
+embeddings = OpenAICompatibleEmbeddings(
+    model=os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small"),
+    base_url=os.environ.get("EMBEDDING_BASE_URL", "https://api.openai.com/v1"),
+    api_key=os.environ.get("EMBEDDING_API_KEY") or os.environ.get("OPENAI_API_KEY"),
+)
+# Use the same path, collection, and embedding configuration used during indexing.
+store = ChromaStore("data/chroma", embedding_id=embeddings.embedding_id)
+service = RAGService(
+    Retriever(embeddings, store),
+    OpenAICompatibleLLM(),
+    RAGConfig(top_k=5, max_context_chars=12000),
+)
+result = service.answer_question("What reporting obligations apply?")
+print(result.model_dump_json(indent=2))
+```
+
+The response includes:
+
+- `status`: `answered` or `insufficient_evidence`.
+- `answer`: individual claims with application-added citation markers, such as
+  `Operators must submit an annual report. [C1]`.
+- `sources`: only cited chunks, deduplicated in order of first citation. Each has
+  `citation_id`, `document`, `page`, `chunk_id`, and verbatim supporting `quotes`.
+- `retrieval_scores`: `{chunk_id, score}` entries for all retrieved candidates,
+  in retrieval order; scores are cosine similarity, not confidence.
+- `retrieved_chunks`: complete retrieved passages and metadata for debugging.
+- `context_chunk_ids`: ordered IDs actually supplied to the LLM. The first maps
+  to `C1`, the next to `C2`, and so on.
+- `refusal_reason`: `no_context`, `model_insufficient`, `invalid_model_output`, or
+  `null` for an answer. The last refusal code identifies a validation failure,
+  rather than claiming that the corpus itself lacks the necessary information.
+
+Context selection preserves retrieval order, removes duplicate chunk IDs, and
+includes only whole chunks within the character budget. Oversized chunks are
+skipped, not truncated. The budget counts passage text, not tokens, JSON overhead,
+the question, or system instructions. `RAGConfig.min_score` optionally excludes
+low-scoring candidates; its default is `None` because thresholds require corpus
+calibration and cannot establish evidence sufficiency by themselves.
+
+The grounded system prompt prohibits external knowledge, treats document text as
+untrusted evidence, and requires refusal when necessary facts are missing. The
+LLM returns JSON claims with a source ID and exact supporting quotation for each
+claim. The application validates the schema, source IDs, quote membership, and
+answer/refusal consistency. It constructs citations from retrieved metadata,
+rather than accepting model-authored filenames or page numbers.
+
+No usable context skips the LLM call. A model-declared lack of evidence or invalid
+grounded output returns:
+`Insufficient evidence in the retrieved documents to answer this question.`
+Such responses have no answer citations but retain retrieval diagnostics. Provider
+and retrieval failures propagate as errors, not evidence refusals. Invalid model
+output is never returned as answer text.
+
+**Grounding limitation:** quote membership and citation validation establish a
+traceable reference, not proof that a quotation logically supports a claim. The
+LLM still assesses semantic support and evidence sufficiency. Prompt instructions
+also cannot guarantee resistance to document prompt injection. Live-model quality
+evaluation remains necessary; the tests verify orchestration and deterministic
+validation with fake or mocked models. No second model verifier or automatic
+repair/retry loop is included in this prototype.
+
 ## Design
 
 - `models.py` contains Pydantic page/chunk models and validated chunk settings.
@@ -167,6 +243,10 @@ not real API calls.
 - The same module exposes `LLMProvider`, `OpenAICompatibleLLM`, and `LLMError`.
   `config.py` validates environment-backed LLM settings. These have no dependency
   on the vector store or retrieval orchestration.
+- `generation.py` builds grounded prompts, validates structured model claims,
+  and renders answers with citations. `service.py` coordinates retrieval and
+  generation. `RAGConfig` provides context-selection limits; `RAGResponse` keeps
+  the answer and retrieval trace together without depending on an API framework.
 - `store.py` handles persistent Chroma storage with explicit embeddings and cosine
   distance. It disables Chroma's automatic embedding function. Search reports
   `1 - distance` as similarity, consistent with the configured
@@ -203,8 +283,10 @@ python -m mypy
 
 Tests generate small real PDF fixtures, mock HTTP embedding responses, and use
 fixed fake vectors with real temporary Chroma databases. They cover persistence
-across processes, metadata, ranking, invalid inputs, and the CLI. No credentials,
-network access, or embedding model downloads are needed.
+across processes, metadata, ranking, invalid inputs, the CLI, grounded answers,
+insufficient evidence, citation/quote validation, and an end-to-end RAG flow with
+mocked HTTP providers. No credentials, network access, or embedding model downloads
+are needed.
 
 ## Limitations
 

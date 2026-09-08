@@ -41,13 +41,17 @@ The API owns ingestion, retrieval, generation, and the Chroma volume. Streamlit 
 | Docker Compose | Reproducible multi-container development, persistent storage, health checks, and one-shot evaluation jobs. |
 | pytest, Ruff, Mypy | Automated behavior tests, linting, and static type checking. |
 
-### RAG flow
+## RAG flow
 
 1. Ingestion extracts pages, splits text into overlapping chunks, and assigns stable chunk IDs.
 2. The embedding provider turns chunks and questions into vectors.
 3. Chroma returns the most similar chunks, retaining source filename, page, score, and text.
 4. The generation prompt labels retrieved passages as untrusted evidence and requires structured JSON claims with quotations.
 5. Pydantic validation checks the response, citation IDs, metadata, and quote membership. Only validated claims are rendered in the UI.
+
+## Observability
+
+The API emits structured JSON logs for each RAG request. Logs include request IDs, retrieval and total latency, LLM latency, retrieved chunk counts and scores, model name, approximate token counts, whether the response was refused, and a stable refusal or error code. Logging uses an allow-list, so prompts, document text, quotations, credentials, and exception payloads are excluded. This provides operational visibility while preserving the privacy of user questions and regulatory content.
 
 ## Configure
 

@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from regulatory_rag.generation import source_quote_match
 from regulatory_rag.models import RAGResponse, SearchResult
 from regulatory_rag.service import RAGService
 
@@ -22,6 +23,7 @@ class EvaluationCase(BaseModel):
     question: str = Field(min_length=1, pattern=r"\S")
     expected_source: str | None = None
     expected_page: int | None = Field(default=None, ge=1)
+    expected_pages: list[int] = Field(default_factory=list)
     reference_answer: str | None = None
     expected_refusal: bool = False
 
@@ -33,9 +35,11 @@ class EvaluationCase(BaseModel):
             raise ValueError(
                 "Answerable cases require expected_source, expected_page, and reference_answer"
             )
-        if self.expected_refusal and any(
-            value is not None
-            for value in (self.expected_source, self.expected_page, self.reference_answer)
+        if self.expected_refusal and (
+            self.expected_source is not None
+            or self.expected_page is not None
+            or self.expected_pages
+            or self.reference_answer is not None
         ):
             raise ValueError("Refusal cases cannot define expected evidence or a reference_answer")
         return self
@@ -61,6 +65,7 @@ class CaseResult(BaseModel):
     expected_refusal: bool
     expected_source: str | None
     expected_page: int | None
+    expected_pages: list[int] = Field(default_factory=list)
     reference_answer: str | None
     outcome: Literal["completed", "failed"]
     error: str | None = None
@@ -92,6 +97,9 @@ class AggregateMetrics(BaseModel):
     mean_reciprocal_rank: float | None
     answer_groundedness: float | None
     refusal_accuracy: float | None
+    answerable_coverage: float | None
+    false_refusal_rate: float | None
+    unsafe_answer_rate: float | None
     mean_retrieval_latency_ms: float | None
     mean_total_latency_ms: float | None
 
@@ -133,7 +141,8 @@ def _rank(case: EvaluationCase, chunks: list[SearchResult]) -> tuple[int | None,
             index
             for index, chunk in enumerate(chunks, start=1)
             if chunk.source_document == case.expected_source
-            and chunk.page_number == case.expected_page
+            and chunk.page_number
+            in (set(case.expected_pages) or ({case.expected_page} if case.expected_page else set()))
         ),
         None,
     )
@@ -154,7 +163,7 @@ def answer_is_grounded(response: RAGResponse) -> bool | None:
             or source.document != chunk.source_document
             or source.page != chunk.page_number
             or not source.quotes
-            or any(quote not in chunk.text for quote in source.quotes)
+            or any(source_quote_match(quote, chunk.text) is None for quote in source.quotes)
             or f"[{source.citation_id}]" not in response.answer
         ):
             return False
@@ -173,19 +182,22 @@ def evaluate_case(service: RAGService, case: EvaluationCase, *, top_k: int) -> C
             expected_refusal=case.expected_refusal,
             expected_source=case.expected_source,
             expected_page=case.expected_page,
+            expected_pages=case.expected_pages,
             reference_answer=case.reference_answer,
             outcome="failed",
             error=f"{type(exc).__name__}: {exc}",
             total_latency_ms=(perf_counter() - started) * 1000,
         )
     exact_rank, document_rank = _rank(case, response.retrieved_chunks)
-    refusal_correct = response.status == "insufficient_evidence" if case.expected_refusal else None
+    expected_status = "insufficient_evidence" if case.expected_refusal else "answered"
+    refusal_correct = response.status == expected_status
     return CaseResult(
         id=case.id,
         question=case.question,
         expected_refusal=case.expected_refusal,
         expected_source=case.expected_source,
         expected_page=case.expected_page,
+        expected_pages=case.expected_pages,
         reference_answer=case.reference_answer,
         outcome="completed",
         retrieval_hit_at_k=exact_rank is not None if not case.expected_refusal else None,
@@ -246,10 +258,15 @@ def aggregate(results: list[CaseResult]) -> AggregateMetrics:
         refusal_accuracy=mean(
             [
                 float(result.refusal_correct)
-                for result in refusals
+                for result in completed
                 if result.refusal_correct is not None
             ]
         ),
+        answerable_coverage=mean([float(r.answer_status == "answered") for r in answerable]),
+        false_refusal_rate=mean(
+            [float(r.answer_status == "insufficient_evidence") for r in answerable]
+        ),
+        unsafe_answer_rate=mean([float(r.answer_status == "answered") for r in refusals]),
         mean_retrieval_latency_ms=mean(
             [
                 result.retrieval_latency_ms
@@ -289,6 +306,7 @@ def write_report(report: EvaluationReport, output_dir: str | Path) -> tuple[Path
             "expected_refusal": result.expected_refusal,
             "expected_source": result.expected_source,
             "expected_page": result.expected_page,
+            "expected_pages": ";".join(str(page) for page in result.expected_pages),
             "outcome": result.outcome,
             "error": result.error,
             "retrieval_hit_at_k": result.retrieval_hit_at_k,
@@ -337,7 +355,8 @@ def console_summary(report: EvaluationReport) -> str:
             ),
             (
                 f"Groundedness: {format_metric(metrics.answer_groundedness)}; "
-                f"refusal accuracy: {format_metric(metrics.refusal_accuracy)}"
+                f"refusal accuracy: {format_metric(metrics.refusal_accuracy)}; "
+                f"false refusal rate: {format_metric(metrics.false_refusal_rate)}"
             ),
             (
                 f"Mean retrieval latency: {format_metric(metrics.mean_retrieval_latency_ms)} ms; "

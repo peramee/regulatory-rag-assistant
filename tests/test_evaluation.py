@@ -128,7 +128,10 @@ def test_answerable_metrics_groundedness_and_failures_are_all_recorded(tmp_path)
         "document_hit_at_k": 1.0,
         "mean_reciprocal_rank": 0.5,
         "answer_groundedness": 0.5,
-        "refusal_accuracy": None,
+        "refusal_accuracy": 1.0,
+        "answerable_coverage": 1.0,
+        "false_refusal_rate": 0.0,
+        "unsafe_answer_rate": None,
         "mean_retrieval_latency_ms": 12.0,
         "mean_total_latency_ms": pytest.approx(report.metrics.mean_total_latency_ms),
     }

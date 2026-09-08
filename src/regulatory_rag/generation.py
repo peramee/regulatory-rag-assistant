@@ -94,7 +94,7 @@ def parse_grounded_output(raw: str, context: list[SearchResult]) -> GroundedOutp
             chunk = sources.get(reference.source_id)
             if chunk is None:
                 raise GroundingError("Citation is not in the supplied context")
-            matched_quote = _source_quote(reference.quote, chunk.text)
+            matched_quote = source_quote_match(reference.quote, chunk.text)
             if matched_quote is None:
                 raise GroundingError("Supporting quote is not in its cited chunk")
             # Return the original excerpt so citations and downstream audits still
@@ -103,7 +103,7 @@ def parse_grounded_output(raw: str, context: list[SearchResult]) -> GroundedOutp
     return output
 
 
-def _source_quote(quote: str, text: str) -> str | None:
+def source_quote_match(quote: str, text: str) -> str | None:
     """Allow PDF layout whitespace differences, never changed words or punctuation."""
     if quote in text:
         return quote

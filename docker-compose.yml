@@ -31,5 +31,20 @@ services:
       api:
         condition: service_healthy
 
+  evaluation:
+    profiles: ["evaluation"]
+    build:
+      context: .
+      dockerfile: Dockerfile.evaluation
+    env_file:
+      - .env
+    environment:
+      EVALUATION_API_URL: http://api:8000
+    volumes:
+      - ./evaluation:/app/evaluation
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   chroma-data:

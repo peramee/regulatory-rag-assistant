@@ -40,6 +40,17 @@ the API over the internal Compose network at `http://api:8000`. Chroma data
 persists in the `chroma-data` volume; source files are read from the local
 `sources/` folder. The API is also available at http://localhost:8000.
 
+Run the evaluation against that same containerized API with the optional Compose
+profile:
+
+```powershell
+docker compose --profile evaluation run --rm evaluation
+```
+
+The evaluation service waits for the API health check and writes JSON and CSV
+reports to `evaluation/results/` on the host. Pass options such as `--top-k`,
+`--dataset`, or `--output-dir` after `evaluation` to customize a run.
+
 On Linux/macOS, activate with `source .venv/bin/activate` instead.
 
 ## Ingest a document

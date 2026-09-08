@@ -28,15 +28,17 @@ automatically indexes all PDF and text files below `sources/` (excluding the
 `originals` archive) into the configured Chroma collection. Set
 `AUTO_INDEX_SOURCES=false` to disable this behavior.
 
-Docker provides the same two-process prototype:
+Docker runs the API and Streamlit frontend as separate services:
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Open http://localhost:8501 after the containers start. Chroma data persists in
-the `chroma-data` volume; source files are read from the local `sources/` folder.
+Open http://localhost:8501 after the containers start. The frontend connects to
+the API over the internal Compose network at `http://api:8000`. Chroma data
+persists in the `chroma-data` volume; source files are read from the local
+`sources/` folder. The API is also available at http://localhost:8000.
 
 On Linux/macOS, activate with `source .venv/bin/activate` instead.
 

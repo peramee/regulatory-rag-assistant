@@ -1,18 +1,35 @@
 services:
-  regulatory-rag:
-    build: .
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     env_file:
       - .env
     environment:
       CHROMA_PATH: /app/data/chroma
       SOURCES_DIR: /app/sources
       AUTO_INDEX_SOURCES: "true"
-      API_BASE_URL: http://127.0.0.1:8000
     ports:
       - "8000:8000"
-      - "8501:8501"
     volumes:
       - chroma-data:/app/data/chroma
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   chroma-data:

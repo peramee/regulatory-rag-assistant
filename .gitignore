@@ -11,6 +11,7 @@ __pycache__/
 data/
 build/
 dist/
+.DS_Store
 
 # Downloaded regulatory reference corpus (PDFs and local source manifest).
 /sources/*

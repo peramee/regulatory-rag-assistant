@@ -17,6 +17,7 @@ LOG_FIELD_NAMES = (
     "approximate_input_tokens",
     "approximate_output_tokens",
     "refused",
+    "refusal_reason",
     "error_type",
     "error_code",
 )

@@ -29,6 +29,12 @@ quote from that source's text. Quotes must support the entire claim, including
 dates, quantities, scope, exceptions, and obligations. Do not infer that a document
 is current or that it applies to a jurisdiction unless the evidence establishes it.
 Do not invent source IDs or quotes. Do not add uncited introductions or conclusions.
+PDF evidence may contain extraction artifacts, including spaces inside words
+(for example, "repor ting" or "fr om"). Copy these exactly in quotes; do not
+correct spelling, join broken words, change punctuation, or add ellipses.
+Use short, contiguous supporting excerpts. For lists or separated passages,
+use separate evidence references rather than combining them into one quote.
+You may use normal spelling in claim text, but never paraphrase a quote.
 Do not place citation markers in claim text; the application adds them. Do not
 return document names or page numbers; the application resolves source metadata.
 If any part needed to answer cannot be supported, return insufficient_evidence.
@@ -88,9 +94,23 @@ def parse_grounded_output(raw: str, context: list[SearchResult]) -> GroundedOutp
             chunk = sources.get(reference.source_id)
             if chunk is None:
                 raise GroundingError("Citation is not in the supplied context")
-            if reference.quote not in chunk.text:
+            matched_quote = _source_quote(reference.quote, chunk.text)
+            if matched_quote is None:
                 raise GroundingError("Supporting quote is not in its cited chunk")
+            # Return the original excerpt so citations and downstream audits still
+            # contain text that occurs verbatim in the retrieved source.
+            reference.quote = matched_quote
     return output
+
+
+def _source_quote(quote: str, text: str) -> str | None:
+    """Allow PDF layout whitespace differences, never changed words or punctuation."""
+    if quote in text:
+        return quote
+    parts = re.split(r"\s+", quote.strip())
+    pattern = r"\s+".join(re.escape(part) for part in parts)
+    match = re.search(pattern, text)
+    return match.group(0) if match else None
 
 
 def render_grounded_answer(

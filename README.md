@@ -245,6 +245,13 @@ LLM returns JSON claims with a source ID and exact supporting quotation for each
 claim. The application validates the schema, source IDs, quote membership, and
 answer/refusal consistency. It constructs citations from retrieved metadata,
 rather than accepting model-authored filenames or page numbers.
+Quote matching tolerates differences in whitespace introduced by PDF layout
+(such as line breaks and repeated spaces), but requires unchanged words and
+punctuation. Returned citations preserve the original source excerpt. Request
+logs include `refusal_reason` to distinguish validation failures from missing evidence.
+Invalid model output gets one retry with validation feedback and the same evidence;
+both attempts use the same validation rules. Model-declared insufficient evidence
+is not retried. Token estimates and LLM timing include both attempts when retried.
 
 No usable context skips the LLM call. A model-declared lack of evidence or invalid
 grounded output returns:

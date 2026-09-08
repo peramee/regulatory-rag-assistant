@@ -103,6 +103,7 @@ def test_refusal_and_provider_failure_are_logged_without_error_messages() -> Non
         next(generator, None)
     refusal = json.loads(stream.getvalue())
     assert refusal["refused"] is True
+    assert refusal["refusal_reason"] == "no_context"
     assert refusal["llm_latency_ms"] is None
     assert refusal["approximate_input_tokens"] is None
 

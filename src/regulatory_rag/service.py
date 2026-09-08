@@ -223,17 +223,32 @@ class RAGService:
 
         system_prompt, user_prompt = build_grounded_prompt(question, context)
         # Provider/transport errors propagate, rather than masquerading as a lack of evidence.
-        telemetry.input_characters = len(system_prompt) + len(user_prompt)
+        telemetry.input_characters = 0
+        telemetry.output_characters = 0
         llm_started = perf_counter()
         try:
-            raw = self.llm.generate(system_prompt, user_prompt)
+            for attempt in range(2):
+                telemetry.input_characters += len(system_prompt) + len(user_prompt)
+                raw = self.llm.generate(system_prompt, user_prompt)
+                telemetry.output_characters += len(raw)
+                try:
+                    output = parse_grounded_output(raw, context)
+                    break
+                except GroundingError as error:
+                    if attempt == 1:
+                        return response.model_copy(
+                            update={"refusal_reason": "invalid_model_output"}
+                        )
+                    # Retry once with validation feedback, never relax grounding or
+                    # insert unvalidated model text into the system instructions.
+                    system_prompt += (
+                        f"\nYour previous response failed validation: {error}. "
+                        "Generate the answer again from the supplied evidence. "
+                        "Copy short supporting quotes exactly, preserving spaces inside "
+                        "words and punctuation. Use separate references for separate excerpts."
+                    )
         finally:
             telemetry.llm_seconds = perf_counter() - llm_started
-        telemetry.output_characters = len(raw)
-        try:
-            output = parse_grounded_output(raw, context)
-        except GroundingError:
-            return response.model_copy(update={"refusal_reason": "invalid_model_output"})
         if output.status == "insufficient_evidence":
             return response.model_copy(update={"refusal_reason": "model_insufficient"})
         answer, sources = render_grounded_answer(output, context)
@@ -263,6 +278,7 @@ class RAGService:
                 "approximate_input_tokens": execution.approximate_input_tokens,
                 "approximate_output_tokens": execution.approximate_output_tokens,
                 "refused": execution.response.status == "insufficient_evidence",
+                "refusal_reason": execution.response.refusal_reason,
                 "error_type": None,
                 "error_code": None,
             },

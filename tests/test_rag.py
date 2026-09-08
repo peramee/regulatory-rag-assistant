@@ -313,3 +313,52 @@ def test_end_to_end_ingestion_chroma_retrieval_and_mocked_http_llm(tmp_path: Pat
     assert result.sources[0].document == "regulation.txt"
     assert result.retrieval_scores[0].score == pytest.approx(1.0)
     assert requests == ["/v1/embeddings", "/v1/embeddings", "/v1/chat/completions"]
+
+
+@pytest.mark.parametrize("whitespace", ["\n", " \n", "  ", "\t", "\u00a0", "\r\n"])
+def test_pdf_quote_whitespace_preserves_original_excerpt(passages, whitespace) -> None:
+    original = f"Operators must{whitespace}submit an annual report."
+    passages[0] = passages[0].model_copy(update={"text": f"Heading\n{original}\nFooter"})
+    result = service_for(passages, response(claim()))[0].answer_question("What is required?")
+    assert result.status == "answered"
+    assert result.sources[0].quotes == [original]
+    from regulatory_rag.evaluation import answer_is_grounded
+
+    assert answer_is_grounded(result)
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "Operators must submit a monthly report.",
+        "Operators must submit an annual report!",
+        "Operators mustsubmit an annual report.",
+        "Operators must ... an annual report.",
+    ],
+)
+def test_whitespace_matching_still_rejects_changed_text(passages, quote) -> None:
+    passages[0] = passages[0].model_copy(
+        update={"text": "Operators must\nsubmit an annual report."}
+    )
+    result = service_for(passages, response(claim(quote=quote)))[0].answer_question("Required?")
+    assert result.refusal_reason == "invalid_model_output"
+
+
+def test_invalid_quote_gets_one_validated_retry(passages) -> None:
+    service, _, llm = service_for(passages, "unused")
+    llm.generate.side_effect = [response(claim(quote="Invented quotation.")), response(claim())]
+    result = service.answer_question("What is required?")
+    assert result.status == "answered"
+    assert llm.generate.call_count == 2
+    retry_system, retry_user = llm.generate.call_args.args
+    assert "Supporting quote is not in its cited chunk" in retry_system
+    assert "Invented quotation." not in retry_system
+    assert retry_user == llm.generate.call_args_list[0].args[1]
+
+
+def test_invalid_quote_retry_is_bounded(passages) -> None:
+    service, _, llm = service_for(passages, response(claim(quote="Invented quotation.")))
+    result = service.answer_question("What is required?")
+    assert result.refusal_reason == "invalid_model_output"
+    assert result.sources == []
+    assert llm.generate.call_count == 2
